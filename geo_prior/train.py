@@ -146,22 +146,21 @@ def train_model(model,
                 loss_o_loc,
                 loc_p_loss,
                 p_o_loss):
-  # --- 日志目录 ---
+  # 日志
   summary_dir = os.path.join(FLAGS.model_dir, "summaries")
   os.makedirs(summary_dir, exist_ok=True)
   summary_callback = tf.keras.callbacks.TensorBoard(summary_dir, profile_batch=0)
 
-  # --- ✅ TF Checkpoint 前缀（不带扩展名）---
-  ckpt_prefix = os.path.join(FLAGS.model_dir, "ckp")
+  # ✅ Keras3 认可的权重文件：.weights.h5
+  keras_w_path = os.path.join(FLAGS.model_dir, "ckp.weights.h5")
   checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
-      filepath=ckpt_prefix,        # 不要加 .keras / .h5 扩展名
-      save_weights_only=True,      # 只存权重 => 生成 TF checkpoint 文件
+      filepath=keras_w_path,
+      save_weights_only=True,
       save_freq='epoch'
   )
 
   optimizer = tf.keras.optimizers.Adam(learning_rate=FLAGS.lr)
   lr_callback = tf.keras.callbacks.LearningRateScheduler(lr_scheduler)
-
   callbacks = [summary_callback, checkpoint_callback, lr_callback]
 
   model.compile(optimizer=optimizer,
@@ -177,10 +176,20 @@ def train_model(model,
       validation_data=val_dataset
   )
 
-  # --- （可选但推荐）收尾再存一次，确保最后权重落盘到 ckp.* ---
-  model.save_weights(ckpt_prefix)
+  # 再存一次 Keras 权重，确保最终一次在盘上
+  model.save_weights(keras_w_path)
+
+  # ✅ 额外写出 TensorFlow Checkpoint（无编号前缀）
+  # 这一步会在 FLAGS.model_dir 下生成：
+  #   ckp.index  /  ckp.data-00000-of-00001  /  checkpoint
+  ckpt = tf.train.Checkpoint(model=model)
+  tf_ckpt_prefix = os.path.join(FLAGS.model_dir, "ckp")
+  ckpt.write(tf_ckpt_prefix)
+  print(f"[Saved] Keras weights -> {keras_w_path}")
+  print(f"[Saved] TF checkpoint -> {tf_ckpt_prefix}(.index/.data-00000-of-00001)")
 
   return history
+
 
 
 def set_random_seeds():

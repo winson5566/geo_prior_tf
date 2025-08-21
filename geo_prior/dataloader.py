@@ -20,7 +20,7 @@ import tensorflow as tf
 
 import utils
 
-AUTOTUNE = tf.data.experimental.AUTOTUNE
+AUTOTUNE = tf.data.AUTOTUNE
 
 class JsonInatInputProcessor:
   def __init__(self,
@@ -136,9 +136,8 @@ class JsonInatInputProcessor:
       categories_weights.append(cat_weight)      
       categories_ds.append(cat_ds)
 
-    dataset = tf.data.experimental.sample_from_datasets(
-                                                categories_ds,
-                                                weights=categories_weights)
+    dataset = tf.data.Dataset.sample_from_datasets(categories_ds,
+                                                   weights=categories_weights)
     self.num_instances = int(sum(categories_weights))
 
     return dataset

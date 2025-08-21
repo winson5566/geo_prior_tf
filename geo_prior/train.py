@@ -19,6 +19,8 @@ before you start the python process to ensure that the model trains
 or infers with reproducibility
 """
 import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"   # 关掉 TF C++ 层 INFO/WARNING
+os.environ["AUTOGRAPH_VERBOSITY"] = "0"    # 关掉 AutoGraph 啰嗦日志
 import random
 
 from absl import app
@@ -144,14 +146,18 @@ def train_model(model,
                 loss_o_loc,
                 loc_p_loss,
                 p_o_loss):
+  # --- 日志目录 ---
   summary_dir = os.path.join(FLAGS.model_dir, "summaries")
-  summary_callback = tf.keras.callbacks.TensorBoard(summary_dir,
-                                                    profile_batch=0)
+  os.makedirs(summary_dir, exist_ok=True)
+  summary_callback = tf.keras.callbacks.TensorBoard(summary_dir, profile_batch=0)
 
-  checkpoint_filepath = os.path.join(FLAGS.model_dir, "ckp")
+  # --- ✅ TF Checkpoint 前缀（不带扩展名）---
+  ckpt_prefix = os.path.join(FLAGS.model_dir, "ckp")
   checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
-      filepath=checkpoint_filepath,
-      save_freq='epoch')
+      filepath=ckpt_prefix,        # 不要加 .keras / .h5 扩展名
+      save_weights_only=True,      # 只存权重 => 生成 TF checkpoint 文件
+      save_freq='epoch'
+  )
 
   optimizer = tf.keras.optimizers.Adam(learning_rate=FLAGS.lr)
   lr_callback = tf.keras.callbacks.LearningRateScheduler(lr_scheduler)
@@ -163,11 +169,19 @@ def train_model(model,
                 loc_p_loss=loc_p_loss,
                 p_o_loss=p_o_loss)
 
-  return model.fit(dataset,
-                   epochs=FLAGS.epochs,
-                   steps_per_epoch=int(num_train_instances/FLAGS.batch_size),
-                   callbacks=callbacks,
-                   validation_data=val_dataset)
+  history = model.fit(
+      dataset,
+      epochs=FLAGS.epochs,
+      steps_per_epoch=int(num_train_instances / FLAGS.batch_size),
+      callbacks=callbacks,
+      validation_data=val_dataset
+  )
+
+  # --- （可选但推荐）收尾再存一次，确保最后权重落盘到 ckp.* ---
+  model.save_weights(ckpt_prefix)
+
+  return history
+
 
 def set_random_seeds():
   random.seed(FLAGS.random_seed)
@@ -175,6 +189,9 @@ def set_random_seeds():
   tf.random.set_seed(FLAGS.random_seed)
 
 def main(_):
+  print("Visible GPUs:", tf.config.list_physical_devices("GPU"))
+  # tf.debugging.set_log_device_placement(True)  # 打印每个 op 放在哪个设备
+
   set_random_seeds()
 
   dataset, num_instances, num_classes, num_users, num_feats = build_input_data(
@@ -197,9 +214,26 @@ def main(_):
                 num_users=(num_users if FLAGS.use_photographers else 0),
                 use_bn=FLAGS.use_batch_normalization)
 
-  loss_o_loc = losses.weighted_binary_cross_entropy(pos_weight=num_classes)
-  loc_p_loss = losses.log_loss()
-  p_o_loss = losses.weighted_binary_cross_entropy(pos_weight=num_classes)
+  # --- Loss 包装：返回每样本损失 (B,)；Keras 用 SUM_OVER_BATCH_SIZE 规约到标量 ---
+  class ReducedLoss(tf.keras.losses.Loss):
+      def __init__(self, base_fn, name=None):
+          super().__init__(reduction=tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE, name=name)
+          self.base_fn = base_fn  # 你的原始损失函数，可能返回 (B,) 或 (B,C,...)
+
+      def call(self, y_true, y_pred):
+          loss = self.base_fn(y_true, y_pred)  # 任意形状
+          loss = tf.cast(loss, tf.float32)
+          loss = tf.reshape(loss, (tf.shape(loss)[0], -1))  # -> (B, -1)
+          return tf.reduce_mean(loss, axis=1)  # -> (B,) 每样本标量
+
+  # 用上面的类包装你原有的三个损失
+  loss_o_loc = ReducedLoss(losses.weighted_binary_cross_entropy(pos_weight=num_classes), name="loss_o_loc")
+  loc_p_loss = ReducedLoss(losses.log_loss(), name="loc_p_loss")
+  p_o_loss = ReducedLoss(losses.weighted_binary_cross_entropy(pos_weight=num_classes), name="p_o_loss")
+
+  # loss_o_loc = losses.weighted_binary_cross_entropy(pos_weight=num_classes)
+  # loc_p_loss = losses.log_loss()
+  # p_o_loss = losses.weighted_binary_cross_entropy(pos_weight=num_classes)
 
   model.build((None, num_feats))
   model.summary()

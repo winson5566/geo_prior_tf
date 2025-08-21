@@ -27,6 +27,7 @@ from absl import flags
 from scipy import sparse
 from sklearn.metrics import accuracy_score
 import numpy as np
+np.complex_ = np.complex128  # 👈 临时兼容性修复
 import tensorflow as tf
 
 from models import FCNet

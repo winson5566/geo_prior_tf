@@ -19,12 +19,17 @@ The original CNN predictions file used for evaluation can be downloaded from the
 
 To train a geo prior model use the script `train.py`:
 ```bash
-python train.py --train_data_json=PATH_TO_BE_CONFIGURED/train2018.json \
-    --train_location_info_json=PATH_TO_BE_CONFIGURED/train2018_locations.json \
-    --val_data_json=PATH_TO_BE_CONFIGURED/val2018.json \
-    --val_location_info_json=PATH_TO_BE_CONFIGURED/val2018_locations.json \
-    --model_dir=PATH_TO_BE_CONFIGURED/geo_prior_ckp/ \
-    --random_seed=42
+#python geo_prior/train.py --train_data_json=dataset/train.json \
+#    --train_location_info_json=dataset/train_locations.json \
+#    --val_data_json=dataset/val.json \
+#    --val_location_info_json=dataset/val_locations.json \
+#    --model_dir=model/geo_prior_ckp/ \
+#    --random_seed=42
+#    
+python geo_prior/train.py --train_data_json=dataset/train.json \
+--val_data_json=dataset/val.json \
+--model_dir=model/geo_prior_ckp/ \
+--random_seed=42
 ```
 
 Other training hyperparams can also be passed as flags. For more parameter information, please refer to `train.py`.
@@ -33,10 +38,15 @@ Other training hyperparams can also be passed as flags. For more parameter infor
 
 To evaluate a model use the script `eval.py`:
 ```bash
-python eval.py --test_data_json=PATH_TO_BE_CONFIGURED/val2018.json \
-    --test_location_info_json=PATH_TO_BE_CONFIGURED/val2018_locations.json \
-    --cnn_predictions_file=PATH_TO_BE_CONFIGURED/inat2018_val_preds_sparse.npz \
-    --ckpt_dir=PATH_TO_BE_CONFIGURED/geo_prior_ckp/
+#python eval.py --test_data_json=PATH_TO_BE_CONFIGURED/val2018.json \
+    #    --test_location_info_json=PATH_TO_BE_CONFIGURED/val2018_locations.json \
+#    --cnn_predictions_file=PATH_TO_BE_CONFIGURED/inat2018_val_preds_sparse.npz \
+#    --ckpt_dir=PATH_TO_BE_CONFIGURED/geo_prior_ckp/
+python geo_prior/eval.py --test_data_json=dataset/val.json \
+--test_location_info_json=dataset/val_locations.json \
+--cnn_predictions_file=no_prior \
+--ckpt_dir=model/geo_prior_ckp \
+--num_users=0
 ```
 
 ### Results
